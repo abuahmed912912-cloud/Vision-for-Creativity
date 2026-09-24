@@ -1,0 +1,312 @@
+<!-- ============================================================ -->
+<!-- 📱 قسم إدارة المشغلين وخدمات الاتصالات — النسخة الجديدة -->
+<!-- ============================================================ -->
+<section id="telecom" class="section hidden">
+  
+  <!-- رأس الصفحة -->
+  <div class="page-title">
+    <div>
+      <h2>📱 إدارة المشغلين وخدمات الاتصالات</h2>
+      <span class="muted">أرصدة، توريد، بيع، وأرباح</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn small green" onclick="openNewProvider()">➕ مشغل جديد</button>
+      <button class="btn small" onclick="openProvidersReport()">📊 تقرير الأرباح</button>
+      <button class="btn small wa" onclick="shareProvidersSummary()">💬 واتساب</button>
+    </div>
+  </div>
+
+  <!-- بطاقات الإحصائيات -->
+  <div class="cards">
+    <div class="stat" style="border-right:4px solid #0f4c81">
+      💰 إجمالي رصيد الشمال
+      <b id="telBalanceNorth" style="color:#0f4c81">0</b>
+      <span class="muted" style="font-size:11px">رصيد متاح</span>
+    </div>
+    <div class="stat" style="border-right:4px solid #16a34a">
+      💰 إجمالي رصيد الجنوب
+      <b id="telBalanceSouth" style="color:#16a34a">0</b>
+      <span class="muted" style="font-size:11px">رصيد متاح</span>
+    </div>
+    <div class="stat" style="border-right:4px solid #f59e0b">
+      📈 أرباح اليوم
+      <b id="telProfitToday" style="color:#f59e0b">0</b>
+      <span class="muted" style="font-size:11px">من عمليات البيع</span>
+    </div>
+    <div class="stat" style="border-right:4px solid #7c3aed">
+      🏢 عدد المشغلين
+      <b id="telProvidersCount" style="color:#7c3aed">0</b>
+      <span class="muted" style="font-size:11px">مشغل نشط</span>
+    </div>
+  </div>
+
+  <!-- قائمة المشغلين -->
+  <div class="panel" style="margin-top:14px">
+    <div class="page-title" style="margin-bottom:10px">
+      <h3 style="margin:0">🏢 المشغلون</h3>
+      <button class="btn small" onclick="loadProviders()">🔄 تحديث</button>
+    </div>
+    <div id="providersList">
+      <p class="muted" style="text-align:center;padding:20px">جارٍ التحميل...</p>
+    </div>
+  </div>
+
+  <!-- نموذج عملية جديدة -->
+  <div class="panel">
+    <h3 style="margin-top:0">➕ عملية جديدة</h3>
+    <div class="formgrid">
+      
+      <div>
+        <label>نوع العملية</label>
+        <select id="telTxType" onchange="toggleTelFields()">
+          <option value="supply">📥 توريد (إضافة رصيد)</option>
+          <option value="consume">📤 بيع / استهلاك</option>
+          <option value="adjustment">⚖️ تسوية (تعيين الرصيد)</option>
+          <option value="deduction">➖ خصم يدوي</option>
+        </select>
+      </div>
+      
+      <div>
+        <label>المشغل</label>
+        <select id="telProvider"></select>
+      </div>
+      
+      <div>
+        <label>العملة / الاتجاه</label>
+        <select id="telCurrency">
+          <option value="north">🟦 شمالي</option>
+          <option value="south">🟩 جنوبي</option>
+        </select>
+      </div>
+      
+      <div>
+        <label>المبلغ</label>
+        <input id="telAmount" type="number" min="0" step="0.01" placeholder="0">
+      </div>
+      
+      <div id="telCostWrap">
+        <label>التكلفة (سعر الشراء من المشغل)</label>
+        <input id="telCost" type="number" min="0" step="0.01" value="0" oninput="calcTelProfit()">
+      </div>
+      
+      <div id="telProfitWrap">
+        <label>الربح المتوقع</label>
+        <input id="telProfit" type="number" readonly style="background:#f1f5f9;font-weight:800;color:#16a34a">
+      </div>
+      
+      <div id="telCustomerWrap" class="hidden">
+        <label>العميل (إن كان ديناً)</label>
+        <select id="telCustomer">
+          <option value="">— نقدي —</option>
+        </select>
+      </div>
+      
+      <div id="telPhoneWrap" class="hidden">
+        <label>رقم الهاتف</label>
+        <input id="telPhone" type="tel" placeholder="77xxxxxxx" dir="ltr">
+      </div>
+      
+      <div class="full">
+        <label>ملاحظات</label>
+        <input id="telNotes" placeholder="اختياري">
+      </div>
+      
+      <div class="full">
+        <label>إشعار واتساب للعميل</label>
+        <select id="telNotify">
+          <option value="yes">نعم</option>
+          <option value="no">لا</option>
+        </select>
+      </div>
+      
+    </div>
+    
+    <div class="modal-actions">
+      <button class="btn green full" onclick="saveProviderTransaction()">💾 حفظ العملية</button>
+    </div>
+  </div>
+
+  <!-- سجل الحركات -->
+  <div class="panel">
+    <div class="page-title" style="margin-bottom:10px">
+      <h3 style="margin:0">📜 آخر الحركات</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input id="telTxSearch" class="search" placeholder="بحث..." oninput="renderProviderTransactions()" style="max-width:200px">
+        <select id="telTxFilter" onchange="renderProviderTransactions()" style="max-width:150px">
+          <option value="all">الكل</option>
+          <option value="supply">توريد</option>
+          <option value="consume">بيع</option>
+          <option value="adjustment">تسوية</option>
+          <option value="deduction">خصم</option>
+        </select>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>التاريخ</th>
+            <th>المشغل</th>
+            <th>النوع</th>
+            <th>الاتجاه</th>
+            <th>المبلغ</th>
+            <th>التكلفة</th>
+            <th>الربح</th>
+            <th>العميل</th>
+            <th>الرقم</th>
+            <th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="telTxBody">
+          <tr><td colspan="10" class="muted">جارٍ التحميل...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+</section>
+
+<!-- ============================================================ -->
+<!-- 🪟 نافذة إضافة / تعديل مشغل -->
+<!-- ============================================================ -->
+<div id="providerModal" class="modal">
+  <div class="modalbox">
+    <h3 id="providerModalTitle">➕ مشغل جديد</h3>
+    <div class="formgrid">
+      
+      <div class="full">
+        <label>اسم المشغل <span style="color:#dc2626">*</span></label>
+        <input id="prName" placeholder="مثال: يمن موبايل">
+      </div>
+      
+      <div>
+        <label>التصنيف</label>
+        <select id="prCategory">
+          <option value="balance">رصيد</option>
+          <option value="cards">بطاقات</option>
+          <option value="bundles">باقات</option>
+          <option value="internet">إنترنت</option>
+          <option value="other">أخرى</option>
+        </select>
+      </div>
+      
+      <div>
+        <label>الهاتف</label>
+        <input id="prPhone" type="tel" dir="ltr">
+      </div>
+      
+      <div>
+        <label>رصيد شمالي افتتاحي</label>
+        <input id="prBalanceNorth" type="number" value="0" min="0" step="0.01">
+      </div>
+      
+      <div>
+        <label>رصيد جنوبي افتتاحي</label>
+        <input id="prBalanceSouth" type="number" value="0" min="0" step="0.01">
+      </div>
+      
+      <div>
+        <label>الحالة</label>
+        <select id="prActive">
+          <option value="active">نشط</option>
+          <option value="inactive">معطل</option>
+        </select>
+      </div>
+      
+      <div>
+        <label>حد التنبيه (رصيد منخفض)</label>
+        <input id="prLowAlert" type="number" value="0" min="0" step="0.01">
+      </div>
+      
+      <div class="full">
+        <label>ملاحظات</label>
+        <input id="prNotes" placeholder="اختياري">
+      </div>
+      
+    </div>
+    <div class="modal-actions">
+      <button class="btn green" onclick="saveProvider()">💾 حفظ</button>
+      <button class="btn gray" onclick="closeModal('providerModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 🪟 نافذة تقرير أرباح المشغلين -->
+<!-- ============================================================ -->
+<div id="providersReportModal" class="modal">
+  <div class="modalbox" style="width:min(900px,100%)">
+    <h3 style="margin-top:0">📊 تقرير أرباح المشغلين</h3>
+    
+    <div class="formgrid" style="margin-bottom:14px">
+      <div>
+        <label>من تاريخ</label>
+        <input id="prFrom" type="date">
+      </div>
+      <div>
+        <label>إلى تاريخ</label>
+        <input id="prTo" type="date">
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn small" onclick="loadProvidersReport()">🔍 عرض</button>
+      <button class="btn small green" onclick="exportProvidersReportExcel()">📥 Excel</button>
+      <button class="btn small red" onclick="exportProvidersReportPDF()">🖨️ PDF</button>
+    </div>
+    
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>المشغل</th>
+            <th>عمليات توريد</th>
+            <th>عمليات بيع</th>
+            <th>إجمالي التوريد</th>
+            <th>إجمالي البيع</th>
+            <th>التكلفة</th>
+            <th>الربح</th>
+            <th>نسبة الربح</th>
+          </tr>
+        </thead>
+        <tbody id="prReportBody">
+          <tr><td colspan="8" class="muted">اختر الفترة ثم اضغط "عرض"</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <div class="modal-actions">
+      <button class="btn gray" onclick="closeModal('providersReportModal')">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 🪟 نافذة كشف حساب مشغل -->
+<!-- ============================================================ -->
+<div id="providerStatementModal" class="modal">
+  <div class="modalbox" style="width:min(800px,100%)">
+    <h3 id="providerStatementTitle" style="margin-top:0">📋 كشف حساب مشغل</h3>
+    <div id="providerStatementSummary" class="muted"></div>
+    <div class="tablewrap" style="margin-top:12px;max-height:400px">
+      <table>
+        <thead>
+          <tr>
+            <th>التاريخ</th>
+            <th>النوع</th>
+            <th>الاتجاه</th>
+            <th>المبلغ</th>
+            <th>الربح</th>
+            <th>العميل</th>
+            <th>ملاحظات</th>
+          </tr>
+        </thead>
+        <tbody id="providerStatementBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn green" onclick="exportProviderStatementExcel()">📥 Excel</button>
+      <button class="btn gray" onclick="closeModal('providerStatementModal')">إغلاق</button>
+    </div>
+  </div>
+</div>
