@@ -69,12 +69,14 @@
   
   // الحصول على الأرقام من عنصر
   function getNum(id) {
-    const el = document.getElementById(id);
-    if (!el) return null;
-    const txt = el.textContent.replace(/[^\d\.\-]/g, '');
-    const n = parseFloat(txt);
-    return isNaN(n) ? 0 : n;
-  }
+  const el = document.getElementById(id);
+  if (!el) return null;
+  let txt = el.textContent;
+  txt = txt.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  txt = txt.replace(/[^\d\.\-]/g, '');
+  const n = parseFloat(txt);
+  return isNaN(n) ? 0 : n;
+}
   
   // إضافة/تحديث الـ wrapper تحت العنصر
   function updateTafqeet(targetId, wrapId) {
