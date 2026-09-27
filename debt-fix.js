@@ -1,9 +1,8 @@
 /* ============================================================
-   💰 إصلاح تراكم الديون + عرض الرصيد السابق في الواتساب
+   💰 debt-fix v2 — قراءة الرصيد من قاعدة البيانات مباشرة
    ============================================================ */
 (function() {
   
-  // دالة استبدال tplSale — تُظهر الرصيد السابق دائماً
   function buildSaleMessage(opts) {
     const {customer_name, items, total, paid, remaining, date, prev_balance, new_balance} = opts;
     
@@ -12,10 +11,10 @@
     ).join('\n');
     
     const prev = Number(prev_balance || 0);
-    const newBal = Number(new_balance || (prev + remaining));
+    const newBal = Number(new_balance || 0);
     
     let debtLine = '';
-    if (prev > 0) {
+    if (prev > 0 && remaining > 0) {
       debtLine = `\n━━━━━━━━━━━━━━━\n` +
         `💼 *رصيدك السابق:* ${money(prev)} ${CUR()}\n` +
         `🆕 *هذه الفاتورة:* ${money(remaining)} ${CUR()}\n` +
@@ -23,7 +22,7 @@
         `📌 *إجمالي مديونيتك: ${money(newBal)} ${CUR()}*`;
     } else if (remaining > 0) {
       debtLine = `\n━━━━━━━━━━━━━━━\n` +
-        `📌 *إجمالي مديونيتك: ${money(remaining)} ${CUR()}*`;
+        `📌 *إجمالي مديونيتك: ${money(newBal || remaining)} ${CUR()}*`;
     }
     
     return `🧾 *فاتورة مبيعات — ${SHOP_SETTINGS.shop_name}*\n` +
@@ -41,7 +40,6 @@
       `${SHOP_SETTINGS.shop_name}`;
   }
   
-  // استبدال دالة tplSale
   window.tplSale = function(data) {
     return buildSaleMessage({
       customer_name: data.customer_name,
@@ -55,17 +53,26 @@
     });
   };
   
-  // استبدال saveSale
   window.saveSale = async function() {
     try {
       const customer_id = $('saleCustomer').value || null;
       const type = $('saleType').value;
       if (type !== 'cash' && !customer_id) return toast('اختر عميلاً للآجل');
       
-      // قراءة رصيد العميل قبل البيع
-      const cBefore = customer_id ? customers.find(x => x.id === customer_id) : null;
-      const prev_balance = cBefore ? Number(cBefore.balance || 0) : 0;
+      // ⭐ 1. اقرأ الرصيد الحقيقي من قاعدة البيانات مباشرة
+      let prev_balance = 0;
+      if (customer_id) {
+        const {data: freshC, error: eC} = await client
+          .from('customers')
+          .select('balance')
+          .eq('id', customer_id)
+          .single();
+        if (!eC && freshC) {
+          prev_balance = Number(freshC.balance || 0);
+        }
+      }
       
+      // 2. جهّز الأصناف
       const rows = [...document.querySelectorAll('#saleRows .formgrid')].map(r => {
         const pid = r.querySelector('.row-prod').value;
         const p = products.find(x => x.id === pid);
@@ -85,7 +92,7 @@
       const remaining = total - paid;
       const notify = $('saleNotify').value === 'yes';
       
-      // حفظ الفاتورة
+      // ⭐ 3. استدعِ RPC لحفظ الفاتورة
       const {data: sid, error} = await client.rpc('create_sale_transaction', {
         p_customer_id: customer_id,
         p_payment_type: type,
@@ -95,18 +102,32 @@
       });
       if (error) throw error;
       
-      // حساب الرصيد الجديد
-      const new_balance = prev_balance + remaining;
-      
-      // تحديث رصيد العميل يدوياً (للتأكد)
-      if (customer_id && remaining > 0 && cBefore) {
-        const {error: e2} = await client.from('customers')
-          .update({balance: new_balance})
-          .eq('id', customer_id);
-        if (e2) console.warn('balance update:', e2);
+      // ⭐ 4. اقرأ الرصيد الجديد من قاعدة البيانات
+      let new_balance = prev_balance + remaining;
+      if (customer_id) {
+        const {data: afterC, error: eA} = await client
+          .from('customers')
+          .select('balance')
+          .eq('id', customer_id)
+          .single();
+        
+        if (!eA && afterC) {
+          const afterBal = Number(afterC.balance || 0);
+          
+          // ⭐ إذا لم يتغير الرصيد → حدّثه يدوياً
+          if (afterBal === prev_balance && remaining > 0) {
+            new_balance = prev_balance + remaining;
+            await client.from('customers')
+              .update({balance: new_balance})
+              .eq('id', customer_id);
+            console.log('✅ تم تحديث الرصيد يدوياً:', new_balance);
+          } else {
+            new_balance = afterBal;
+          }
+        }
       }
       
-      // فتح واتساب
+      // 5. واتساب
       if (notify && customer_id) {
         const c = customers.find(x => x.id === customer_id);
         if (c && c.phone) {
@@ -132,5 +153,5 @@
     } catch (e) { err(e); }
   };
   
-  console.log('💰 debt-fix.js محمّل');
+  console.log('💰 debt-fix.js v2 محمّل');
 })();
