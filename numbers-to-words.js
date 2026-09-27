@@ -1,5 +1,5 @@
 /* ============================================================
-   🔢 تفقيط — تحويل الأرقام إلى كلمات
+   🔢 تفقيط — تحويل الأرقام إلى كلمات عربية
    ============================================================ */
 (function() {
   const ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة',
@@ -47,24 +47,18 @@
     return w.filter(Boolean).join(' و');
   }
   
-  function full(amount, currency = 'YER') {
+  function full(amount) {
     amount = Number(amount || 0);
     if (isNaN(amount) || amount === 0) return 'صفر';
     const neg = amount < 0; amount = Math.abs(amount);
     const whole = Math.floor(amount);
     const frac = Math.round((amount - whole) * 100);
-    const names = {
-      'YER': {n: 'ريال يمني', p: 'ريالات يمنية', s: 'فلس'},
-      'SAR': {n: 'ريال سعودي', p: 'ريالات سعودية', s: 'هللة'},
-      'USD': {n: 'دولار أمريكي', p: 'دولارات أمريكية', s: 'سنت'}
-    };
-    const c = names[currency] || names['YER'];
     let r = '';
-    if (whole === 1) r = c.n + ' واحد';
-    else if (whole === 2) r = c.n + 'ان';
-    else if (whole >= 3 && whole <= 10) r = ar(whole) + ' ' + c.p;
-    else if (whole > 10) r = ar(whole) + ' ' + c.n;
-    if (frac > 0) { if (r) r += ' و'; r += ar(frac) + ' ' + c.s; }
+    if (whole === 1) r = 'ريال يمني واحد';
+    else if (whole === 2) r = 'ريالان يمنيان';
+    else if (whole >= 3 && whole <= 10) r = ar(whole) + ' ريالات يمنية';
+    else if (whole > 10) r = ar(whole) + ' ريال يمني';
+    if (frac > 0) { if (r) r += ' و'; r += ar(frac) + ' فلس'; }
     if (neg) r = 'سالب ' + r;
     return r || 'صفر';
   }
@@ -73,68 +67,53 @@
   window.numberToWordsFull = full;
   window.tafqeet = full;
   
-  function getCurrency() {
-    return (window.SHOP_SETTINGS && window.SHOP_SETTINGS.currency_code) || 'YER';
-  }
-  
-  function makeWrapper(id) {
+  // الحصول على الأرقام من عنصر
+  function getNum(id) {
     const el = document.getElementById(id);
-    if (!el || el.dataset.tafqeet === '1') return;
-    el.dataset.tafqeet = '1';
-    const wrap = document.createElement('div');
-    wrap.id = id + 'Words';
-    wrap.style.cssText = 'color:#0f4c81;font-weight:700;font-size:13px;margin-top:6px;background:#eaf3fb;padding:8px;border-radius:8px';
-    wrap.textContent = '📝 ' + full(parseFloat(el.textContent.replace(/,/g, '')) || 0, getCurrency());
-    el.parentNode.appendChild(wrap);
+    if (!el) return null;
+    const txt = el.textContent.replace(/[^\d\.\-]/g, '');
+    const n = parseFloat(txt);
+    return isNaN(n) ? 0 : n;
   }
   
-  function update(id) {
-    const el = document.getElementById(id);
-    const wrap = document.getElementById(id + 'Words');
-    if (!el || !wrap) return;
-    const num = parseFloat(el.textContent.replace(/,/g, '')) || 0;
-    wrap.textContent = '📝 ' + full(num, getCurrency());
+  // إضافة/تحديث الـ wrapper تحت العنصر
+  function updateTafqeet(targetId, wrapId) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    
+    const num = getNum(targetId);
+    let wrap = document.getElementById(wrapId);
+    
+    // إنشاء الـ wrapper إن لم يكن موجوداً
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = wrapId;
+      wrap.style.cssText = 'color:#0f4c81;font-weight:700;font-size:13px;margin-top:6px;background:#eaf3fb;padding:8px;border-radius:8px;direction:rtl';
+      target.parentNode.insertBefore(wrap, target.nextSibling);
+    }
+    
+    const text = '📝 ' + full(num);
+    if (wrap.textContent !== text) {
+      wrap.textContent = text;
+    }
   }
   
-  function watchTotal(id) {
-    const el = document.getElementById(id);
-    if (!el || el.dataset.watchTafqeet === '1') return;
-    el.dataset.watchTafqeet = '1';
-    makeWrapper(id);
-    new MutationObserver(() => update(id)).observe(el, {childList: true, characterData: true, subtree: true});
-    // تحديث أولي
-    setTimeout(() => update(id), 500);
+  // حلقة تحديث كل 500ms — تضمن التزامن مع recalc
+  function loop() {
+    updateTafqeet('saleTotal', 'saleTotalWords');
+    updateTafqeet('purchaseTotal', 'purchaseTotalWords');
+    updateTafqeet('voiceTotal', 'voiceTotalWords');
   }
   
-  function init() {
-    watchTotal('saleTotal');
-    watchTotal('purchaseTotal');
-    // للرصيد السابق
-    ['customerBalanceInfo', 'supplierBalanceInfo'].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el || el.dataset.tafqeet === '1') return;
-      el.dataset.tafqeet = '1';
-      new MutationObserver(() => {
-        const m = el.textContent.match(/([\d,\.]+)/);
-        if (!m) return;
-        const num = parseFloat(m[1].replace(/,/g, ''));
-        if (isNaN(num)) return;
-        let line = el.querySelector('.tafqeet-line');
-        if (!line) {
-          line = document.createElement('div');
-          line.className = 'tafqeet-line';
-          line.style.cssText = 'font-size:11px;color:#92400e;margin-top:4px;font-weight:600';
-          el.appendChild(line);
-        }
-        line.textContent = '📝 ' + full(num, getCurrency());
-      }).observe(el, {childList: true, characterData: true, subtree: true});
-    });
-  }
-  
+  // التشغيل
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 3000));
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(loop, 1500);
+      setInterval(loop, 500);
+    });
   } else {
-    setTimeout(init, 3000);
+    setTimeout(loop, 1500);
+    setInterval(loop, 500);
   }
   
   console.log('🔢 التفقيط جاهز');
