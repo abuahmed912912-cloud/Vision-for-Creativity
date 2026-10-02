@@ -1,8 +1,62 @@
 /* ============================================================
-   💰 debt-fix v2 — قراءة الرصيد من قاعدة البيانات مباشرة
+   💰 debt-fix v3 — إعادة حساب الرصيد من الصفر
    ============================================================ */
 (function() {
   
+  // دالة إعادة حساب رصيد أي عميل من جدول customer_transactions
+  async function recalcCustomerBalance(customerId) {
+    try {
+      const {data: txs, error} = await client
+        .from('customer_transactions')
+        .select('amount')
+        .eq('customer_id', customerId);
+      
+      if (error) throw error;
+      
+      const total = (txs || []).reduce((s, t) => s + Number(t.amount || 0), 0);
+      
+      const {error: e2} = await client
+        .from('customers')
+        .update({balance: total})
+        .eq('id', customerId);
+      
+      if (e2) throw e2;
+      
+      console.log('✅ رصيد جديد:', total);
+      return total;
+    } catch (e) {
+      console.error('recalc error:', e);
+      return null;
+    }
+  }
+  
+  // تصدير الدالة للاستخدام العام
+  window.recalcCustomerBalance = recalcCustomerBalance;
+  
+  // إصلاح الزر في قائمة العملاء
+  setTimeout(() => {
+    const panel = document.querySelector('#customers .panel');
+    if (!panel || document.getElementById('btnRecalcAll')) return;
+    const btn = document.createElement('button');
+    btn.id = 'btnRecalcAll';
+    btn.className = 'btn small';
+    btn.style.cssText = 'background:#0891b2;color:#fff;margin-top:8px';
+    btn.innerHTML = '🔄 إصلاح جميع أرصدة العملاء';
+    btn.onclick = async () => {
+      if (!confirm('سيتم إعادة حساب رصيد كل عميل من كشف حساباته. متابعة؟')) return;
+      toast('⏳ جاري الإصلاح...');
+      let count = 0;
+      for (const c of customers) {
+        await recalcCustomerBalance(c.id);
+        count++;
+      }
+      await loadCustomers();
+      toast(`✅ تم إصلاح ${count} عميل`);
+    };
+    panel.appendChild(btn);
+  }, 3000);
+  
+  // دالة بناء رسالة المبيعات
   function buildSaleMessage(opts) {
     const {customer_name, items, total, paid, remaining, date, prev_balance, new_balance} = opts;
     
@@ -44,9 +98,7 @@
     return buildSaleMessage({
       customer_name: data.customer_name,
       items: data.items,
-      total: data.total,
-      paid: data.paid,
-      remaining: data.remaining,
+      total: data.total, paid: data.paid, remaining: data.remaining,
       date: data.date,
       prev_balance: data.prev_balance || 0,
       new_balance: data.new_balance
@@ -59,17 +111,11 @@
       const type = $('saleType').value;
       if (type !== 'cash' && !customer_id) return toast('اختر عميلاً للآجل');
       
-      // ⭐ 1. اقرأ الرصيد الحقيقي من قاعدة البيانات مباشرة
+      // 1. اقرأ الرصيد الحالي من DB
       let prev_balance = 0;
       if (customer_id) {
-        const {data: freshC, error: eC} = await client
-          .from('customers')
-          .select('balance')
-          .eq('id', customer_id)
-          .single();
-        if (!eC && freshC) {
-          prev_balance = Number(freshC.balance || 0);
-        }
+        const {data: c1} = await client.from('customers').select('balance').eq('id', customer_id).single();
+        if (c1) prev_balance = Number(c1.balance || 0);
       }
       
       // 2. جهّز الأصناف
@@ -92,7 +138,7 @@
       const remaining = total - paid;
       const notify = $('saleNotify').value === 'yes';
       
-      // ⭐ 3. استدعِ RPC لحفظ الفاتورة
+      // 3. استدعِ RPC
       const {data: sid, error} = await client.rpc('create_sale_transaction', {
         p_customer_id: customer_id,
         p_payment_type: type,
@@ -102,28 +148,12 @@
       });
       if (error) throw error;
       
-      // ⭐ 4. اقرأ الرصيد الجديد من قاعدة البيانات
+      // 4. ⭐ أعد حساب الرصيد من الصفر
       let new_balance = prev_balance + remaining;
       if (customer_id) {
-        const {data: afterC, error: eA} = await client
-          .from('customers')
-          .select('balance')
-          .eq('id', customer_id)
-          .single();
-        
-        if (!eA && afterC) {
-          const afterBal = Number(afterC.balance || 0);
-          
-          // ⭐ إذا لم يتغير الرصيد → حدّثه يدوياً
-          if (afterBal === prev_balance && remaining > 0) {
-            new_balance = prev_balance + remaining;
-            await client.from('customers')
-              .update({balance: new_balance})
-              .eq('id', customer_id);
-            console.log('✅ تم تحديث الرصيد يدوياً:', new_balance);
-          } else {
-            new_balance = afterBal;
-          }
+        const recalculated = await recalcCustomerBalance(customer_id);
+        if (recalculated !== null) {
+          new_balance = recalculated;
         }
       }
       
@@ -153,5 +183,5 @@
     } catch (e) { err(e); }
   };
   
-  console.log('💰 debt-fix.js v2 محمّل');
+  console.log('💰 debt-fix.js v3 محمّل');
 })();
