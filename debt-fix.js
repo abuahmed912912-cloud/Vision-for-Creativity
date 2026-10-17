@@ -1,8 +1,9 @@
 /* ============================================================
-   💰 debt-fix v4 — قراءة مباشرة من قاعدة البيانات
+   💰 debt-fix v5 — حساب الرصيد السابق من الحركات
    ============================================================ */
 (function() {
 
+  // ⭐ دالة قراءة الرصيد — إذا كان balance=0 نعيد حسابه من الحركات
   async function getCustomerBalance(customerId) {
     if (!customerId) return 0;
     try {
@@ -12,27 +13,26 @@
         .eq('id', customerId)
         .single();
       if (error) throw error;
-      return Number(data?.balance || 0);
+      
+      let bal = Number(data?.balance || 0);
+      
+      // ⭐ إذا كان الرصيد 0، احسبه من الحركات
+      if (bal === 0) {
+        const {data: txs} = await client
+          .from('customer_transactions')
+          .select('amount')
+          .eq('customer_id', customerId);
+        
+        if (txs && txs.length > 0) {
+          bal = txs.reduce((s, t) => s + Number(t.amount || 0), 0);
+          console.log('📊 حسبت الرصيد من الحركات:', bal);
+        }
+      }
+      
+      return bal;
     } catch (e) {
       console.warn('getBalance error:', e);
       return 0;
-    }
-  }
-
-  async function recalcFromTransactions(customerId) {
-    try {
-      const {data, error} = await client
-        .from('customer_transactions')
-        .select('amount')
-        .eq('customer_id', customerId);
-      if (error) throw error;
-      const total = (data || []).reduce((s, t) => s + Number(t.amount || 0), 0);
-      await client.from('customers').update({balance: total}).eq('id', customerId);
-      console.log('✅ recalc:', total);
-      return total;
-    } catch (e) {
-      console.warn('recalc error:', e);
-      return null;
     }
   }
 
@@ -93,9 +93,9 @@
       const type = $('saleType').value;
       if (type !== 'cash' && !customer_id) return toast('اختر عميلاً للآجل');
 
-      // 1. اقرأ الرصيد من DB مباشرة
+      // 1. اقرأ الرصيد (مع حساب بديل إذا كان 0)
       const prev_balance = await getCustomerBalance(customer_id);
-      console.log('💰 prev_balance from DB:', prev_balance);
+      console.log('💰 prev_balance:', prev_balance);
 
       // 2. جهّز الأصناف
       const rows = [...document.querySelectorAll('#saleRows .formgrid')].map(r => {
@@ -127,24 +127,16 @@
       });
       if (error) throw error;
 
-      // 4. انتظر قليلاً ليُحدَّث الرصيد
-      await new Promise(r => setTimeout(r, 500));
+      // 4. الرصيد الجديد = السابق + المتبقي
+      const new_balance = prev_balance + remaining;
+      console.log('💰 new_balance:', new_balance);
 
-      // 5. اقرأ الرصيد الجديد
-      let new_balance = await getCustomerBalance(customer_id);
-      console.log('💰 new_balance from DB:', new_balance);
-
-      // 6. إذا لم يتغير → recalc من الحركات
-      if (new_balance === prev_balance && remaining > 0) {
-        console.log('⚠️ الرصيد لم يتغير - إعادة حساب من الحركات');
-        const recalculated = await recalcFromTransactions(customer_id);
-        if (recalculated !== null) new_balance = recalculated;
-        else new_balance = prev_balance + remaining;
+      // 5. حدّث الرصيد في DB لضمان التزامن
+      if (customer_id && remaining > 0) {
+        await client.from('customers').update({balance: new_balance}).eq('id', customer_id);
       }
 
-      console.log('💰 FINAL prev:', prev_balance, '| new:', new_balance);
-
-      // 7. واتساب
+      // 6. واتساب
       if (notify && customer_id) {
         const c = customers.find(x => x.id === customer_id);
         if (c && c.phone) {
@@ -184,8 +176,12 @@
       toast('⏳ جاري الإصلاح...');
       let n = 0;
       for (const c of customers) {
-        await recalcFromTransactions(c.id);
-        n++;
+        try {
+          const {data: txs} = await client.from('customer_transactions').select('amount').eq('customer_id', c.id);
+          const total = (txs || []).reduce((s, t) => s + Number(t.amount || 0), 0);
+          await client.from('customers').update({balance: total}).eq('id', c.id);
+          n++;
+        } catch (e) {}
       }
       await loadCustomers();
       toast(`✅ تم إصلاح ${n} عميل`);
@@ -193,5 +189,5 @@
     panel.appendChild(btn);
   }, 3000);
 
-  console.log('💰 debt-fix.js v4 محمّل');
+  console.log('💰 debt-fix.js v5 محمّل');
 })();
